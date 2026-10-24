@@ -1,0 +1,1 @@
+from .AppInfo import AppInfo
