@@ -27,3 +27,4 @@ app.add_exception_handler(Exception, system_exception_handler)
 # ========================= 路由注册 =========================
 # 将各个子路由模块挂载到不同前缀下
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
+app.include_router(session_router, prefix="/session", tags=["session"])
