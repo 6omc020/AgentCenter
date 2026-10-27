@@ -1,5 +1,9 @@
+import asyncio
 from typing import Optional
+import uuid
 
+from langchain_core.messages import HumanMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.constants import START, END
@@ -75,7 +79,45 @@ class RouterAgent(BaseAgent):
         self.graph = builder.compile()
 
     async def execute(self, question: str, session_id: str, user_token: str) -> AsyncIterable[str]:
-        pass
+        try:
+            request_id = uuid.uuid4().hex
+
+            # 构建Graph执行上下文
+            config = RunnableConfig(configurable={
+                "thread_id": session_id,
+                "user_token": user_token,
+                "request_id": request_id,
+            })
+
+            # 用户输入封装
+            inputs = {"messages": HumanMessage(question)}
+
+            res = self.graph.astream(
+                input=inputs,
+                config=config,
+                stream_mode="messages",
+            )
+
+            try:
+                async for node_info , (message , metadata) in res:
+                    #提取message内容
+                    content = getattr(message, "content" , None)
+                    if not content:
+                        continue
+                    #SSE输出文本事件
+                    yield make_sse_event(1001,content)
+            except asyncio.CancelledError:
+                #客户端中断，关流
+                await res.aclose()
+                #全局异常处理
+                raise
+
+        except Exception as e:
+            logger.exception("RouterAgent error")
+            yield make_sse_event(2001, str(e))
+
+        #SSE停止(前端关流)
+        yield format_sse_data(STOP_EVENT)
 
     def id(self) -> int:
         """
