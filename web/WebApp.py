@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from starlette.responses import PlainTextResponse
 
 from agent import AGENTS
+from config import get_async_pg_pool, close_async_pg_pool
 from web.routers import *
 
 
@@ -15,11 +16,18 @@ async def lifespan(app: FastAPI):
     - 启动时：调用所有智能体的 init() 初始化方法
     - 关闭时：按初始化的逆序调用所有智能体的 destroy() 销毁方法
     """
+
+    # 初始化异步数据库连接池
+    await get_async_pg_pool()
+
     # 启动事件：初始化所有 Agent
     for item in AGENTS.values():
         await item.init()
 
     yield
+
+    # 关闭数据库连接池
+    await close_async_pg_pool()
 
     # 关闭事件：销毁所有 Agent
     for item in reversed(list(AGENTS.values())):

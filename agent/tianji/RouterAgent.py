@@ -2,16 +2,18 @@ import asyncio
 from typing import Optional
 import uuid
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.constants import START, END
+from langgraph.types import StateSnapshot
 
 from agent.BaseAgent import *
 from agent.tianji.nodes import *
 from agent.tianji.RouteState import RouteState
-from config import logger
+from config import logger, get_async_pg_pool
 from common import *
 
 
@@ -43,7 +45,31 @@ class RouterAgent(BaseAgent):
         """
         初始化 RouterAgent
         """
+        # 检查会话记忆所需要的表是否存在
+        await self.check_table()
+
+        # 获取异步数据库连接池实例
+        async_pg_pool = await get_async_pg_pool()
+        # 创建checkpointer是用于实现会话记忆的
+        self.checkpointer = AsyncPostgresSaver(conn=async_pg_pool)
+
         self.init_graph()
+
+    async def check_table(self):
+        """
+        检查数据库中是否存在会话记忆相关的表，如果不存在则创建
+        """
+        async_pg_pool = await get_async_pg_pool()
+        conn = None
+        try:
+            # 先创建一个临时checkpointer，用于检查数据库中相关的表是否存在，如果不存在则创建
+            conn = await async_pg_pool.getconn()
+            await conn.set_autocommit(True)  # 设置自动提交，不使用显式事务块
+            checkpointer = AsyncPostgresSaver(conn=conn)
+            await checkpointer.setup()  # 如果会话记忆相关的表不存在，会自动创建
+        finally:
+            if conn is not None:
+                await async_pg_pool.putconn(conn)
 
     # ---------------- Graph 初始化 ----------------
     def init_graph(self):
@@ -76,7 +102,7 @@ class RouterAgent(BaseAgent):
             builder.add_edge(target, END)
 
         # 编译 Graph，并启用 Checkpointer
-        self.graph = builder.compile()
+        self.graph = builder.compile(checkpointer=self.checkpointer)
 
     async def execute(self, question: str, session_id: str, user_token: str) -> AsyncIterable[str]:
         try:
@@ -127,8 +153,35 @@ class RouterAgent(BaseAgent):
         return 1001
 
     async def session_detail(self, user_id: int, session_id: str) -> list:
-        """暂不实现"""
-        pass
+        """
+        查询指定 session 的消息历史（从 LangGraph 的 Checkpointer 中恢复）。
+
+        同时会自动解析 ToolMessage，用于还原“查询课程/预下单”的参数结构。
+        """
+        config = RunnableConfig(configurable={"thread_id": session_id})
+        state_snapshot: StateSnapshot = await self.graph.aget_state(config)
+        messages = state_snapshot.values.get("messages", [])
+
+        result = []
+
+        for message in messages:
+            msg_type = ""
+            content = message.content
+            params = {}
+
+            # 用户消息
+            if isinstance(message, HumanMessage):
+                msg_type = "USER"
+
+            # 模型回复消息
+            elif isinstance(message, AIMessage):
+                msg_type = "ASSISTANT"
+
+            # 将有效消息加入结果结构
+            if msg_type and content:
+                result.append({"type": msg_type, "content": content, "params": params})
+
+        return result
 
     async def delete_session(self, session_id: str):
         """暂不实现"""

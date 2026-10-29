@@ -1,4 +1,6 @@
 from fastapi import APIRouter
+
+from agent import AGENTS
 from dao import chat_session_dao  # ChatSession 数据访问对象
 
 # ========================= 创建路由对象 =========================
@@ -25,3 +27,19 @@ async def hot_examples(n: int, agent_id: int):
     - agent_id: 智能体ID
     """
     return chat_session_dao.hot_examples(n, agent_id)
+
+# ========================= 查询指定会话详情 =========================
+@session_router.get("/{agent_id}/{user_id}/{session_id}")
+async def session_detail(agent_id: int, user_id: int, session_id: str):
+    """
+    查询某个具体会话的详情
+    - agent_id: 智能体ID
+    - user_id: 用户ID
+    - session_id: 会话ID
+    """
+    agent = AGENTS.get(agent_id, None)
+    if agent is None:
+        return f"Agent not found (agentId={agent_id})"
+
+    # 调用智能体的 session_detail 方法，获取会话详情
+    return await agent.session_detail(user_id, session_id)
