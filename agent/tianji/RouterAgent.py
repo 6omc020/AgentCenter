@@ -96,6 +96,7 @@ class RouterAgent(BaseAgent):
                 input=inputs,
                 config=config,
                 stream_mode="messages",
+                subgraphs=True
             )
 
             try:

@@ -2,7 +2,7 @@ server:
   port: 18089  #服务端口
   host: 0.0.0.0 #监听所有网络接口
   logger:
-#    file: logs/app.log
+    #    file: logs/app.log
     level: DEBUG # 日志级别: CRITICAL, ERROR, WARNING, INFO, DEBUG
 
 db:
@@ -64,3 +64,9 @@ ai:
           describe: " 装饰器的作用是什么？"
         - title: "知识讲解"
           describe: "多线程为什么有GIL限制？"
+  openai:
+    model: deepseek-flash
+    api-key: ${AGENT_CENTER_API_KEY}
+    base-url: https://api.deepseek.com
+    temperature: 0.8
+    timeout: 30
