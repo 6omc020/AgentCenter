@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
@@ -8,6 +9,10 @@ from langchain_core.runnables import RunnableConfig
 from agent.tianji import RouteState
 from config import config_manager
 
+@dataclass
+class ToolContext:
+    user_token: str
+    request_id: str
 
 class BaseNodeAgent(ABC):
     """
@@ -121,8 +126,16 @@ class BaseNodeAgent(ABC):
         else:
             new_messages.append(system_msg)
 
+        configurable = config.get("configurable", {})
+        user_token = configurable.get("user_token", "")
+        request_id = configurable.get("request_id", "")
+
         res = await self.agent.ainvoke(
             input={"messages": new_messages},
+            context=ToolContext(
+                user_token=user_token,
+                request_id=request_id
+            )
         )
 
         # 从结果中移除系统提示词（不需要存储）

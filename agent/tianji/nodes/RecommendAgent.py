@@ -1,4 +1,5 @@
 from agent.tianji.nodes.BaseNodeAgent import BaseNodeAgent
+from agent.tianji.tools import query_course_by_id
 
 
 class RecommendAgent(BaseNodeAgent):
@@ -42,3 +43,6 @@ class RecommendAgent(BaseNodeAgent):
 
     def system_prompt(self):
         return self.system_prompt_str
+
+    def tools(self):
+        return [query_course_by_id]

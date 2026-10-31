@@ -2,7 +2,7 @@ import asyncio
 from typing import Optional
 import uuid
 
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import StateGraph
@@ -127,6 +127,9 @@ class RouterAgent(BaseAgent):
 
             try:
                 async for node_info , (message , metadata) in res:
+                    # 工具返回结果不直接推给前端，避免原始 JSON 被当作正文渲染
+                    if isinstance(message, ToolMessage):
+                        continue
                     #提取message内容
                     content = getattr(message, "content" , None)
                     if not content:

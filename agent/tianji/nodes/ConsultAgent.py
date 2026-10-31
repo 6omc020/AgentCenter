@@ -1,6 +1,9 @@
 from agent.tianji.nodes.BaseNodeAgent import BaseNodeAgent
 from datetime import datetime
 
+from agent.tianji.tools import query_course_by_id
+
+
 class ConsultAgent(BaseNodeAgent):
     """
     课程咨询智能体
@@ -16,7 +19,7 @@ class ConsultAgent(BaseNodeAgent):
         ### 课程推荐与信息查询
         - 当学员询问课程内容时，根据知识库匹配合适的课程，并获取课程ID以查询详细信息。确保回复全面且具有引导性，鼓励学员报名购买。
         - 若未能找到相关课程，请礼貌通知学员未检索到相关内容，并建议联系人工客服（电话：010-12345678）。
-        - 对于课程有效期的咨询，将当前时间{now}与课程有效期相加后告知学员具体日期；若有效期为999天，则视为永久有效。
+        - 对于课程有效期的咨询，将当前时间{time}与课程有效期相加后告知学员具体日期；若有效期为999天，则视为永久有效。
 
         ### 注意事项
         - 所有推荐课程必须源自知识库，严禁编造。
@@ -31,3 +34,5 @@ class ConsultAgent(BaseNodeAgent):
     def system_prompt_params(self):
         return {"time": datetime.now()}
 
+    def tools(self):
+        return [query_course_by_id]
