@@ -34,7 +34,12 @@ class JsonUtil:
         如果 cls 是 dataclass，则返回 dataclass 实例。
         否则返回 dict/list 等原生类型。
         """
+        if json_str is None:
+            return None
+
         obj = orjson.loads(json_str)
         if cls and is_dataclass(cls):
+            if not isinstance(obj, dict):
+                return None
             return cls(**obj)
         return obj

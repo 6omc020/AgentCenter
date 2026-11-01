@@ -13,7 +13,7 @@ from langgraph.types import StateSnapshot
 from agent.BaseAgent import *
 from agent.tianji.nodes import *
 from agent.tianji.RouteState import RouteState
-from agent.tianji.tools.result import CourseInfo
+from agent.tianji.tools.result import CourseInfo, PrePlaceOrder
 from config import logger, get_async_pg_pool
 from common import *
 
@@ -109,28 +109,36 @@ class RouterAgent(BaseAgent):
         try:
             request_id = uuid.uuid4().hex
 
-            # 构建Graph执行上下文
+            # 构建 Graph 执行上下文
             config = RunnableConfig(configurable={
                 "thread_id": session_id,
-                "user_token": user_token,
-                "request_id": request_id,
+                "user_token": user_token, # 将自定义参数传递给子智能体
+                "request_id": request_id  # 将自定义参数传递给子智能体
             })
 
             # 用户输入封装
             inputs = {"messages": HumanMessage(question)}
 
+            # 开始图的流式执行
             res = self.graph.astream(
                 input=inputs,
                 config=config,
+                subgraphs=True, # 需要得到子图的输出
                 stream_mode="messages",
-                subgraphs=True
             )
 
             # 工具调用的执行结果
             tool_result = {}
 
             try:
-                async for node_info , (message , metadata) in res:
+                async for node_info, (message, metadata) in res:
+                    # 获取消息 tags（例如 IntentAgent）
+                    tags = metadata.get("tags", [])
+
+                    # 主动跳过 IntentAgent 阶段输出
+                    if "IntentAgent" in tags:
+                        continue
+
                     # ToolMessage 是工具输出，不对用户显示
                     if isinstance(message, ToolMessage):
                         if not message.status == "success":
@@ -140,18 +148,21 @@ class RouterAgent(BaseAgent):
                             if message.name == "query_course_by_id":
                                 course_info = JsonUtil.to_obj(_content, CourseInfo)
                                 tool_result[f"courseInfo_{course_info.id}"] = course_info
+                            elif message.name == "pre_place_order":
+                                order = JsonUtil.to_obj(_content, PrePlaceOrder)
+                                tool_result["prePlaceOrder"] = order
 
                         continue
-                    #提取message内容
-                    content = getattr(message, "content" , None)
+
+                    # 提取 message 内容
+                    content = getattr(message, "content", None)
                     if not content:
                         continue
-                    #SSE输出文本事件
-                    yield make_sse_event(1001,content)
+                    # SSE 输出文本事件
+                    yield make_sse_event(1001, content)
             except asyncio.CancelledError:
-                #客户端中断，关流
+                # 客户端中断，也需要安全关闭流
                 await res.aclose()
-                #全局异常处理
                 raise
 
             # 工具调用结果在结束时统一输出（tag 1003）
@@ -162,7 +173,7 @@ class RouterAgent(BaseAgent):
             logger.exception("RouterAgent error")
             yield make_sse_event(2001, str(e))
 
-        #SSE停止(前端关流)
+        # SSE 最终停止事件（前端用于关闭流）
         yield format_sse_data(STOP_EVENT)
 
     def id(self) -> int:
@@ -196,12 +207,16 @@ class RouterAgent(BaseAgent):
             # 模型回复消息
             elif isinstance(message, AIMessage):
                 msg_type = "ASSISTANT"
+
                 # 如果 AIMessage 紧随 ToolMessage，恢复工具返回内容
                 if tool_message:
                     _content = tool_message.content
                     if tool_message.name == "query_course_by_id":
                         course_info = JsonUtil.to_obj(_content, CourseInfo)
                         params = {f"courseInfo_{course_info.id}": course_info}
+                    elif tool_message.name == "pre_place_order":
+                        order = JsonUtil.to_obj(_content, PrePlaceOrder)
+                        params = {"prePlaceOrder":order}
                     tool_message = None
 
             # 工具调用消息（需要保留，下一条 AIMessage 会用到）
